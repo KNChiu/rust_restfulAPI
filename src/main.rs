@@ -25,7 +25,7 @@ fn load_items() -> Vec<Item> {
     if !path.exists() {
         return vec![]; // 如果文件不存在，返回空向量
     }
-    
+
     let mut file = File::open(path).expect("Unable to open file");
     let mut contents = String::new();
     file.read_to_string(&mut contents).expect("Unable to read file");
@@ -51,7 +51,7 @@ fn save_items(items: &Vec<Item>) -> io::Result<()> {
     path = "/items",
     request_body = Item,
     responses(
-        (status = 201, description = "Created new item successfully"),
+        (status = 201, description = "Created new item successfully", body = Item),
         (status = 500, description = "Internal Server Error")
     )
 )]
@@ -87,7 +87,7 @@ async fn get_items(data: web::Data<AppState>) -> impl Responder {
     ),
     request_body = Item,
     responses(
-        (status = 200, description = "Updated item successfully"),
+        (status = 200, description = "Updated item successfully", body = Item),
         (status = 404, description = "Item not found"),
         (status = 500, description = "Internal Server Error")
     )
