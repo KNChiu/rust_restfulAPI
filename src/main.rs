@@ -1,12 +1,14 @@
-use actix_web::{get, post, put, delete, web, App, HttpServer, HttpResponse, Responder};
+use actix_web::{delete, get, post, put, web, App, HttpResponse, HttpServer, Responder};
 use serde::{Deserialize, Serialize};
-use std::sync::Mutex;
-use std::fs::{OpenOptions, File};
+use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::Path;
+use std::sync::Mutex;
+use utoipa::{OpenApi, ToSchema};
+use utoipa_swagger_ui::SwaggerUi;
 
 // 定義資料模型的結構
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, ToSchema)]
 struct Item {
     id: usize,      // 項目的唯一識別 ID
     name: String,   // 項目的名稱
@@ -43,7 +45,16 @@ fn save_items(items: &Vec<Item>) -> io::Result<()> {
     Ok(())
 }
 
-// 創建新項目（POST 請求）
+/// 創建新項目（POST 請求）
+#[utoipa::path(
+    post,
+    path = "/items",
+    request_body = Item,
+    responses(
+        (status = 201, description = "Created new item successfully"),
+        (status = 500, description = "Internal Server Error")
+    )
+)]
 #[post("/items")]
 async fn create_item(item: web::Json<Item>, data: web::Data<AppState>) -> impl Responder {
     let mut items = data.items.lock().unwrap(); // 獲取資料鎖
@@ -52,14 +63,35 @@ async fn create_item(item: web::Json<Item>, data: web::Data<AppState>) -> impl R
     HttpResponse::Created().finish() // 返回 201 Created 響應
 }
 
-// 獲取所有項目（GET 請求）
+/// 獲取所有項目（GET 請求）
+#[utoipa::path(
+    get,
+    path = "/items",
+    responses(
+        (status = 200, description = "Retrieved all items successfully", body = [Item]),
+        (status = 500, description = "Internal Server Error")
+    )
+)]
 #[get("/items")]
 async fn get_items(data: web::Data<AppState>) -> impl Responder {
     let items = data.items.lock().unwrap(); // 獲取資料鎖
     web::Json(items.clone()) // 返回所有項目作為 JSON
 }
 
-// 更新項目（PUT 請求）
+/// 更新項目（PUT 請求）
+#[utoipa::path(
+    put,
+    path = "/items/{id}",
+    params(
+        ("id" = usize, Path, description = "ID of the item to update")
+    ),
+    request_body = Item,
+    responses(
+        (status = 200, description = "Updated item successfully"),
+        (status = 404, description = "Item not found"),
+        (status = 500, description = "Internal Server Error")
+    )
+)]
 #[put("/items/{id}")]
 async fn update_item(id: web::Path<usize>, item: web::Json<Item>, data: web::Data<AppState>) -> impl Responder {
     let id = id.into_inner(); // 提取 id
@@ -73,7 +105,19 @@ async fn update_item(id: web::Path<usize>, item: web::Json<Item>, data: web::Dat
     HttpResponse::NotFound().finish() // 返回 404 Not Found 響應
 }
 
-// 刪除項目（DELETE 請求）
+/// 刪除項目（DELETE 請求）
+#[utoipa::path(
+    delete,
+    path = "/items/{id}",
+    params(
+        ("id" = usize, Path, description = "ID of the item to delete")
+    ),
+    responses(
+        (status = 200, description = "Deleted item successfully"),
+        (status = 404, description = "Item not found"),
+        (status = 500, description = "Internal Server Error")
+    )
+)]
 #[delete("/items/{id}")]
 async fn delete_item(id: web::Path<usize>, data: web::Data<AppState>) -> impl Responder {
     let id = id.into_inner(); // 提取 id
@@ -86,6 +130,14 @@ async fn delete_item(id: web::Path<usize>, data: web::Data<AppState>) -> impl Re
     }
     HttpResponse::NotFound().finish() // 返回 404 Not Found 響應
 }
+
+// 定義 OpenAPI 文檔
+#[derive(OpenApi)]
+#[openapi(
+    paths(create_item, get_items, update_item, delete_item),
+    components(schemas(Item))
+)]
+struct ApiDoc;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -101,6 +153,10 @@ async fn main() -> std::io::Result<()> {
             .service(get_items) // 註冊獲取所有項目的服務
             .service(update_item) // 註冊更新項目的服務
             .service(delete_item) // 註冊刪除項目的服務
+            .service(
+                SwaggerUi::new("/swagger-ui/{_:.*}")
+                    .url("/api-docs/openapi.json", ApiDoc::openapi()),
+            )
     })
     .bind("127.0.0.1:8080")? // 綁定到指定的 IP 和端口
     .run() // 啟動伺服器
