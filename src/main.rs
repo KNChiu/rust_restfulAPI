@@ -6,12 +6,18 @@ use std::path::Path;
 use std::sync::Mutex;
 use utoipa::{OpenApi, ToSchema};
 use utoipa_swagger_ui::SwaggerUi;
+use chrono::prelude::*;
 
 // 定義資料模型的結構
 #[derive(Serialize, Deserialize, Clone, ToSchema)]
 struct Item {
     id: usize,      // 項目的唯一識別 ID
     name: String,   // 項目的名稱
+}
+
+#[derive(Serialize)]
+struct Info {
+    time: String,
 }
 
 // 定義應用程式狀態，包含一個 Mutex 保護的 Vec<Item>
@@ -78,6 +84,23 @@ async fn get_items(data: web::Data<AppState>) -> impl Responder {
     web::Json(items.clone()) // 返回所有項目作為 JSON
 }
 
+/// 獲取時間（GET 請求）
+#[utoipa::path(
+    get,
+    path = "/system_info",
+    responses(
+        (status = 200, description = "Retrieved system info successfully", body = [Info]),
+        (status = 500, description = "Internal Server Error")
+    )
+)]
+#[get("/system_info")]
+async fn get_system_info(_data: web::Data<AppState>) -> impl Responder {
+    let local: DateTime<Local> = Local::now();
+    web::Json(Info {
+        time: local.to_string(),
+    })
+}
+
 /// 更新項目（PUT 請求）
 #[utoipa::path(
     put,
@@ -134,7 +157,7 @@ async fn delete_item(id: web::Path<usize>, data: web::Data<AppState>) -> impl Re
 // 定義 OpenAPI 文檔
 #[derive(OpenApi)]
 #[openapi(
-    paths(create_item, get_items, update_item, delete_item),
+    paths(get_system_info, create_item, get_items, update_item, delete_item),
     components(schemas(Item))
 )]
 struct ApiDoc;
@@ -149,6 +172,7 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(app_state.clone()) // 將應用程式狀態傳遞給應用
+            .service(get_system_info) // 註冊創建項目的服務
             .service(create_item) // 註冊創建項目的服務
             .service(get_items) // 註冊獲取所有項目的服務
             .service(update_item) // 註冊更新項目的服務
