@@ -1,3 +1,4 @@
+// use actix_web::web::Json;
 use actix_web::{delete, get, post, put, web, App, HttpResponse, HttpServer, Responder};
 use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions};
@@ -7,6 +8,7 @@ use std::sync::Mutex;
 use utoipa::{OpenApi, ToSchema};
 use utoipa_swagger_ui::SwaggerUi;
 use chrono::prelude::*;
+use sysinfo::{CpuRefreshKind, RefreshKind, System};
 
 // 定義資料模型的結構
 #[derive(Serialize, Deserialize, Clone, ToSchema)]
@@ -18,6 +20,19 @@ struct Item {
 #[derive(Serialize)]
 struct Info {
     time: String,
+    ram: Ram,
+    cpu: CPU,
+}
+
+#[derive(Serialize)]
+struct Ram {
+    total_ram: u64,
+    usage_ram: u64,
+}
+
+#[derive(Serialize)]
+struct CPU {
+    usage_cpu: f32,
 }
 
 // 定義應用程式狀態，包含一個 Mutex 保護的 Vec<Item>
@@ -95,9 +110,35 @@ async fn get_items(data: web::Data<AppState>) -> impl Responder {
 )]
 #[get("/system_info")]
 async fn get_system_info(_data: web::Data<AppState>) -> impl Responder {
+    let mut sys = System::new_all();
+    sys.refresh_all();
+
+    // println!("Number of available threads: {}", sys.cpus().len());
+
+    let total_ram = sys.total_memory() / 1048576 ;
+    let usage_ram = sys.used_memory() / 1048576;
+
+    let mut s = System::new_with_specifics(
+        RefreshKind::new().with_cpu(CpuRefreshKind::everything()),
+    );
+    // Wait a bit because CPU usage is based on diff.
+    std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
+    // Refresh CPUs again to get actual value.
+    s.refresh_cpu_usage();
+    // println!("{}%", s.global_cpu_usage());
+
+    let usage_cpu = s.global_cpu_usage();
     let local: DateTime<Local> = Local::now();
+    
     web::Json(Info {
         time: local.to_string(),
+        ram: Ram {
+            total_ram: total_ram,
+            usage_ram: usage_ram,
+        },
+        cpu: CPU {
+            usage_cpu: usage_cpu,
+        }
     })
 }
 
